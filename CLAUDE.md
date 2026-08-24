@@ -41,3 +41,7 @@ Pantallas cubiertas por el prototipo (mapean a rutas a crear en `app/`):
 ### Flujo de desarrollo dirigido por especificación
 
 El README indica que el proyecto sigue Spec Driven Design usando los skills de [Klerith/fernando-skills](https://github.com/Klerith/fernando-skills) (`/spec` y `/spec-impl`), instalables con `npx skills@latest add Klerith/fernando-skills`. Si esos comandos están disponibles, prioriza pasar por `/spec` antes de implementar funcionalidad nueva.
+
+
+## Skills
+Usa siempre /frontend-desing Para diseñar interfaces de usuario
