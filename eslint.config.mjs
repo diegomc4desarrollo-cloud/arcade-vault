@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Prototipo HTML autocontenido (carga React/Babel vía CDN); no se
+    // integra con el build de Next.js, ver references/README o CLAUDE.md.
+    "references/**",
   ]),
 ]);
 
