@@ -1,6 +1,6 @@
 # SPEC 03 — Página "Acerca de" y formulario de contacto con envío por Resend
 
-> **Status:** Aprobado
+> **Status:** Implementado
 > **Depends on:** SPEC 02
 > **Date:** 2026-08-29
 > **Objective:** Implementar `/acerca-de` portando `about.jsx` del prototipo `references/templates/home-about/` y conectar su formulario de contacto para que envíe un correo real al equipo mediante Resend a través de una Server Action.
