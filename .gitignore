@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# capturas de verificación con Playwright/MCP que se conservan para revisar
+# un error (las que no hace falta revisar se borran directamente)
+/.playwright-imagenes/
+/.playwright-mcp/

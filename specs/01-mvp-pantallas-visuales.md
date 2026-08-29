@@ -1,6 +1,6 @@
 # SPEC 01 — MVP visual de Arcade Vault
 
-> **Status:** aprobado
+> **Status:** Implementado
 > **Depends on:** (ninguna)
 > **Date:** 2026-08-29
 > **Objective:** Implementar en `app/` (Next.js App Router) las cinco pantallas visuales del prototipo de referencia (biblioteca, detalle, reproductor, salón de la fama y autenticación) con datos ficticios, sin implementar la lógica jugable real de ningún juego.
@@ -90,7 +90,7 @@ Convenciones:
 2. Crear `app/lib/session.ts` con los helpers de cliente para leer/escribir `av_user` y `av_scores` en `localStorage` (`getUser`, `setUser`, `saveScore`), con comprobación de `typeof window` y `try/catch`.
 3. Crear `app/components/Nav.tsx` (Client Component) migrando `nav.jsx`: usa `usePathname` para resaltar el enlace activo, lee la sesión con los helpers del paso 2, incluye el menú móvil (hamburguesa).
 4. Integrar `<Nav />` y el pie de página (copyright/versión) en `app/layout.tsx`, sustituyendo el marcado por defecto de `create-next-app`. Test manual: `npm run dev` muestra la navegación y el pie en cualquier ruta.
-5. Crear `app/components/GameCard.tsx` (tarjeta con tilt) y reescribir `app/page.tsx` como la pantalla Biblioteca: Server Component que hace `await getGames()` / `await getCategories()` y delega el buscador/filtro interactivo a un Client Component (`app/components/LibraryFilters.tsx`). Test manual: `/` muestra el grid completo, buscar por nombre y filtrar por categoría funcionan.
+5. Crear `app/components/GameCard.tsx` (tarjeta con tilt) y reescribir `app/page.tsx` como la pantalla Biblioteca: Server Component que hace `await getGames()` / `await getCategories()` y delega el buscador/filtro interactivo a un Client Component (`app/components/LibraryBrowser.tsx`). Test manual: `/` muestra el grid completo, buscar por nombre y filtrar por categoría funcionan.
 6. Crear `app/juegos/[id]/page.tsx` (pantalla Detalle): Server Component que hace `await getGameById(id)` y `await getScores(id, 10)`; si el juego no existe, `notFound()`. Incluye el leaderboard y los botones de acción. Test manual: `/juegos/bloque-buster` muestra ficha y tabla de puntuaciones; un id inexistente da 404.
 7. Crear `app/components/GamePlayer.tsx` (Client Component) migrando `reproductor.jsx` (HUD, CRT, simulación de puntuación, pausa, modal de fin con guardado vía `session.ts`) y `app/juegos/[id]/jugar/page.tsx`, que resuelve el juego con `await getGameById(id)` y renderiza el componente cliente. Test manual: jugar, pausar/reanudar, terminar partida y guardar la puntuación con un nombre.
 8. Crear `app/auth/page.tsx` (Client Component) migrando `auth.jsx`: tabs, formularios, botón invitado; guarda la sesión con `session.ts` y redirige a `/` tras iniciar sesión. Test manual: iniciar sesión o entrar como invitado actualiza el `Nav`.
@@ -101,24 +101,24 @@ Convenciones:
 
 ## Acceptance criteria
 
-- [ ] `npm run dev` arranca sin errores y `/` muestra la Biblioteca con el grid de 8 juegos.
-- [ ] El buscador de la Biblioteca filtra los juegos por título en tiempo real.
-- [ ] Los chips de categoría filtran el grid y "TODOS" muestra los 8 juegos.
-- [ ] Al pulsar una tarjeta o el botón "JUGAR" se navega a `/juegos/[id]` con los datos correctos del juego.
-- [ ] `/juegos/[id]` muestra la tabla de mejores puntuaciones con 10 filas ordenadas de mayor a menor.
-- [ ] Navegar a `/juegos/id-inexistente` devuelve una página 404.
-- [ ] "JUGAR AHORA" navega a `/juegos/[id]/jugar` y la puntuación del HUD sube sola cada pocos milisegundos.
-- [ ] El botón PAUSA detiene el incremento de puntuación y REANUDAR lo reactiva.
-- [ ] El botón FIN abre el modal de fin de partida con la puntuación final.
-- [ ] Guardar la puntuación en el modal escribe una entrada nueva en `localStorage` bajo la clave `av_scores`.
-- [ ] `/auth` permite iniciar sesión con un nombre de usuario y redirige a `/` mostrando ese nombre en el `Nav`.
-- [ ] El botón "JUGAR COMO INVITADO" en `/auth` guarda una sesión con nombre `INVITADO` (visible en el `Nav`) y redirige a `/`.
-- [ ] Cerrar sesión desde el `Nav` borra la sesión de `localStorage` y vuelve a mostrar "Iniciar Sesión".
-- [ ] `/salon` muestra podio y tabla para el primer juego por defecto y cambia al seleccionar otra pestaña de juego.
-- [ ] Con una sesión iniciada, `/salon` muestra una fila adicional con el nombre del usuario logueado.
-- [ ] El menú móvil (hamburguesa) se abre y cierra correctamente en viewport estrecho.
-- [ ] `npm run lint` no reporta errores.
-- [ ] `npm run build` completa sin errores.
+- [x] `npm run dev` arranca sin errores y `/` muestra la Biblioteca con el grid de 8 juegos.
+- [x] El buscador de la Biblioteca filtra los juegos por título en tiempo real.
+- [x] Los chips de categoría filtran el grid y "TODOS" muestra los 8 juegos.
+- [x] Al pulsar una tarjeta o el botón "JUGAR" se navega a `/juegos/[id]` con los datos correctos del juego.
+- [x] `/juegos/[id]` muestra la tabla de mejores puntuaciones con 10 filas ordenadas de mayor a menor.
+- [x] Navegar a `/juegos/id-inexistente` devuelve una página 404.
+- [x] "JUGAR AHORA" navega a `/juegos/[id]/jugar` y la puntuación del HUD sube sola cada pocos milisegundos.
+- [x] El botón PAUSA detiene el incremento de puntuación y REANUDAR lo reactiva.
+- [x] El botón FIN abre el modal de fin de partida con la puntuación final.
+- [x] Guardar la puntuación en el modal escribe una entrada nueva en `localStorage` bajo la clave `av_scores`.
+- [x] `/auth` permite iniciar sesión con un nombre de usuario y redirige a `/` mostrando ese nombre en el `Nav`.
+- [x] El botón "JUGAR COMO INVITADO" en `/auth` guarda una sesión con nombre `INVITADO` (visible en el `Nav`) y redirige a `/`.
+- [x] Cerrar sesión desde el `Nav` borra la sesión de `localStorage` y vuelve a mostrar "Iniciar Sesión".
+- [x] `/salon` muestra podio y tabla para el primer juego por defecto y cambia al seleccionar otra pestaña de juego.
+- [x] Con una sesión iniciada, `/salon` muestra una fila adicional con el nombre del usuario logueado.
+- [x] El menú móvil (hamburguesa) se abre y cierra correctamente en viewport estrecho.
+- [x] `npm run lint` no reporta errores.
+- [x] `npm run build` completa sin errores.
 
 ---
 
@@ -133,6 +133,7 @@ Convenciones:
 - **Sí:** guardar puntuaciones de partida en `localStorage` (`av_scores`) tal como en el prototipo, sin que retroalimenten el Salón de la Fama ni el leaderboard de detalle (que siguen usando el generador de puntuaciones simuladas). Razón: replica el comportamiento exacto del prototipo, que tampoco cruza esos datos.
 - **Sí:** reutilizar tal cual las clases ya portadas en `app/globals.css` (tema neón/retro, portadas CSS, animaciones). Razón: ya están migradas y verificadas visualmente; reescribirlas no aporta valor a este spec.
 - **No:** sincronizar el buscador/filtro de categoría de la Biblioteca con la URL (`searchParams`). Razón: el prototipo tampoco lo hace y no se pidió; queda fuera para no ampliar el alcance.
+- **Sí (excepción puntual a "no se reescribe el CSS"):** se tocó `app/globals.css` para corregir un desbordamiento horizontal real del `Nav` en viewports estrechos (~≤400px), detectado al verificar el criterio del menú móvil con Playwright — el botón "Iniciar Sesión" y el ≡ no cabían y quedaban cortados. Cambio mínimo: se ajustó el `gap`/margen en la media query móvil existente y se añadió una media query a 400px que oculta el botón redundante del header (ya disponible dentro del panel móvil). Confirmado con el usuario antes de tocar el archivo.
 
 ---
 
