@@ -196,10 +196,10 @@ export default function HomeScreen({ games, recentScores, topPlayers }: HomeScre
             <Link className="btn xl pulse" href="/juegos">▶  EXPLORAR JUEGOS</Link>
             <Link className="btn xl magenta" href="/auth">✦  CREAR CUENTA</Link>
           </div>
-          <div className="hero-scroll" aria-hidden="true">
-            <span>DESLIZA</span>
-            <span className="arrow">▼</span>
-          </div>
+        </div>
+        <div className="hero-scroll" aria-hidden="true">
+          <span>DESLIZA</span>
+          <span className="arrow">▼</span>
         </div>
       </section>
 
