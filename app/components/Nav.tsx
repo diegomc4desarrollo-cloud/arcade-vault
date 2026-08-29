@@ -2,19 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { getUser, setUser as persistUser, type SessionUser } from "@/app/lib/session";
+import { useState, useSyncExternalStore } from "react";
+import { getUser, setUser as persistUser, subscribeUser } from "@/app/lib/session";
 
 type NavSection = "biblioteca" | "salon" | "auth";
+
+const getServerUserSnapshot = () => null;
 
 export default function Nav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const [user, setUser] = useState<SessionUser | null>(null);
-
-  useEffect(() => {
-    setUser(getUser());
-  }, [pathname]);
+  const user = useSyncExternalStore(subscribeUser, getUser, getServerUserSnapshot);
 
   const isActive = (section: NavSection) => {
     if (section === "biblioteca") return pathname === "/" || pathname.startsWith("/juegos");
@@ -26,7 +24,6 @@ export default function Nav() {
 
   const handleSignOut = () => {
     persistUser(null);
-    setUser(null);
   };
 
   return (

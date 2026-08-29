@@ -31,6 +31,21 @@ export function setUser(user: SessionUser | null): void {
   } catch {
     // localStorage no disponible (p. ej. modo privado): la sesión no persiste.
   }
+  notifyUserChange();
+}
+
+type Listener = () => void;
+const userListeners = new Set<Listener>();
+
+function notifyUserChange(): void {
+  userListeners.forEach((listener) => listener());
+}
+
+// Permite que los componentes (p. ej. Nav) se suscriban a cambios de
+// sesión hechos en el mismo tab, vía useSyncExternalStore.
+export function subscribeUser(listener: Listener): () => void {
+  userListeners.add(listener);
+  return () => userListeners.delete(listener);
 }
 
 export function saveScore(entry: Omit<SavedScore, "at">): void {
