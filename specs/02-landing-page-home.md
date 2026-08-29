@@ -1,6 +1,6 @@
 # SPEC 02 — Landing page (Home) y traslado de la Biblioteca a `/juegos`
 
-> **Status:** Aprobado
+> **Status:** Implementado
 > **Depends on:** SPEC 01
 > **Date:** 2026-08-29
 > **Objective:** Convertir `/` en la landing page de Arcade Vault portando `home.jsx` del prototipo `references/templates/home-about/`, y mover la Biblioteca (hoy en `/`) a `/juegos`, actualizando todos los enlaces internos.
