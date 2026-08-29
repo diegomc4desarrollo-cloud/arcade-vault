@@ -23,6 +23,22 @@ export type ScoreRow = {
   date: string;
 };
 
+// Fila del ticker "últimas puntuaciones" del Home.
+export type RecentScore = {
+  name: string;
+  game: string; // título del juego
+  score: number;
+  ago: string; // "hace 2 min" — derivado del índice, no de Date.now()
+  color: Game["color"];
+};
+
+// Fila del "top jugadores" del Home.
+export type TopPlayer = {
+  rank: number;
+  name: string;
+  score: number;
+};
+
 const GAMES: Game[] = [
   {
     id: "bloque-buster",
@@ -169,4 +185,49 @@ export async function getGameById(id: string): Promise<Game | undefined> {
 
 export async function getScores(gameId: string, count = 12): Promise<ScoreRow[]> {
   return seededScores(hashSeed(gameId), count);
+}
+
+// Minutos "hace X" para el ticker; fijos y deterministas.
+const RECENT_AGO_MINUTES = [2, 5, 8, 12, 18, 24, 31, 40, 52, 65];
+
+// Ticker de últimas puntuaciones del Home: mezcla marcas de varios juegos
+// del catálogo. Determinista (sin Date.now() ni aleatoriedad sin semilla).
+export async function getRecentScores(count = 7): Promise<RecentScore[]> {
+  const pool = GAMES.flatMap((game) =>
+    seededScores(hashSeed(`${game.id}-recent`), 2).map((row) => ({
+      name: row.name,
+      game: game.title,
+      score: row.score,
+      color: game.color,
+    })),
+  );
+
+  pool.sort(
+    (a, b) => hashSeed(`${a.name}-${a.game}`) - hashSeed(`${b.name}-${b.game}`),
+  );
+
+  return pool.slice(0, count).map((entry, index) => ({
+    ...entry,
+    ago: `hace ${RECENT_AGO_MINUTES[index] ?? (index + 1) * 8} min`,
+  }));
+}
+
+// Top jugadores del Home: mejor marca por jugador en todo el catálogo.
+// Determinista.
+export async function getTopPlayers(count = 5): Promise<TopPlayer[]> {
+  const best = new Map<string, number>();
+
+  for (const game of GAMES) {
+    for (const row of seededScores(hashSeed(game.id), 6)) {
+      if (row.score > (best.get(row.name) ?? 0)) {
+        best.set(row.name, row.score);
+      }
+    }
+  }
+
+  return [...best.entries()]
+    .map(([name, score]) => ({ name, score }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, count)
+    .map((entry, index) => ({ rank: index + 1, ...entry }));
 }
