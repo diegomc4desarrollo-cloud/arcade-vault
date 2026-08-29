@@ -11,13 +11,27 @@ function hasStorage(): boolean {
   return typeof window !== "undefined";
 }
 
-export function getUser(): SessionUser | null {
+// getUser() se usa como getSnapshot de useSyncExternalStore (Nav, GamePlayer),
+// que exige devolver una referencia estable mientras no haya cambios reales:
+// si cada llamada hiciera un JSON.parse nuevo, cada render vería un objeto
+// distinto y entraría en loop infinito. Por eso se cachea aquí y solo se
+// vuelve a leer de localStorage la primera vez o tras un setUser().
+let cachedUser: SessionUser | null | undefined;
+
+function readUserFromStorage(): SessionUser | null {
   if (!hasStorage()) return null;
   try {
     return JSON.parse(window.localStorage.getItem(USER_KEY) ?? "null");
   } catch {
     return null;
   }
+}
+
+export function getUser(): SessionUser | null {
+  if (cachedUser === undefined) {
+    cachedUser = readUserFromStorage();
+  }
+  return cachedUser;
 }
 
 export function setUser(user: SessionUser | null): void {
@@ -31,6 +45,7 @@ export function setUser(user: SessionUser | null): void {
   } catch {
     // localStorage no disponible (p. ej. modo privado): la sesión no persiste.
   }
+  cachedUser = user;
   notifyUserChange();
 }
 

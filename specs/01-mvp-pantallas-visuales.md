@@ -112,7 +112,7 @@ Convenciones:
 - [ ] El botón FIN abre el modal de fin de partida con la puntuación final.
 - [ ] Guardar la puntuación en el modal escribe una entrada nueva en `localStorage` bajo la clave `av_scores`.
 - [ ] `/auth` permite iniciar sesión con un nombre de usuario y redirige a `/` mostrando ese nombre en el `Nav`.
-- [ ] El botón "JUGAR COMO INVITADO" en `/auth` también inicia sesión y redirige a `/`.
+- [ ] El botón "JUGAR COMO INVITADO" en `/auth` guarda una sesión con nombre `INVITADO` (visible en el `Nav`) y redirige a `/`.
 - [ ] Cerrar sesión desde el `Nav` borra la sesión de `localStorage` y vuelve a mostrar "Iniciar Sesión".
 - [ ] `/salon` muestra podio y tabla para el primer juego por defecto y cambia al seleccionar otra pestaña de juego.
 - [ ] Con una sesión iniciada, `/salon` muestra una fila adicional con el nombre del usuario logueado.
@@ -129,6 +129,7 @@ Convenciones:
 - **Sí:** rutas anidadas por juego (`/juegos/[id]` y `/juegos/[id]/jugar`). Razón: aprovecha el segmento dinámico común y es la convención más idiomática de Next.js App Router; confirmado frente a la alternativa de rutas planas (`/detalle/[id]`, `/jugar/[id]`).
 - **Sí:** mantener el bucle decorativo del reproductor (puntuación que sube sola, sprites animados) igual que el prototipo. Razón: es una simulación visual, no lógica jugable real; se confirmó mantenerla para no perder fidelidad con la referencia.
 - **Sí:** login/registro mock vía `localStorage` (`av_user`), sin validar credenciales contra nada real, con opción de entrar como invitado. Razón: no hay backend en el alcance de este MVP; el objetivo es solo la capa visual/de interacción.
+- **Sí:** "JUGAR COMO INVITADO" guarda una sesión real con `name: "INVITADO"` (el `Nav` pasa a mostrar "INVITADO ▾", con opción de cerrar sesión), en vez de replicar el comportamiento del prototipo (`onLogin(null)`, que dejaba la sesión en `null` y el `Nav` seguía mostrando "Iniciar Sesión"). Razón: ambigüedad detectada durante la implementación entre el prototipo y el criterio de aceptación de esta spec, que decía que ese botón "también inicia sesión"; se resolvió con el usuario a favor de una sesión de invitado visible, coherente con el placeholder "INVITADO" que ya usa el Reproductor cuando no hay sesión.
 - **Sí:** guardar puntuaciones de partida en `localStorage` (`av_scores`) tal como en el prototipo, sin que retroalimenten el Salón de la Fama ni el leaderboard de detalle (que siguen usando el generador de puntuaciones simuladas). Razón: replica el comportamiento exacto del prototipo, que tampoco cruza esos datos.
 - **Sí:** reutilizar tal cual las clases ya portadas en `app/globals.css` (tema neón/retro, portadas CSS, animaciones). Razón: ya están migradas y verificadas visualmente; reescribirlas no aporta valor a este spec.
 - **No:** sincronizar el buscador/filtro de categoría de la Biblioteca con la URL (`searchParams`). Razón: el prototipo tampoco lo hace y no se pidió; queda fuera para no ampliar el alcance.
