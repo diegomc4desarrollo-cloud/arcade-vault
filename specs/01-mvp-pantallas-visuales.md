@@ -5,6 +5,8 @@
 > **Date:** 2026-08-29
 > **Objective:** Implementar en `app/` (Next.js App Router) las cinco pantallas visuales del prototipo de referencia (biblioteca, detalle, reproductor, salón de la fama y autenticación) con datos ficticios, sin implementar la lógica jugable real de ningún juego.
 
+> **Nota (SPEC 02):** La Biblioteca dejó de vivir en `/` y ahora está en `/juegos`; `/` es la landing page. Quedan superados los criterios de esta spec que ubicaban la Biblioteca en `/` (grid de 8 juegos, buscador y chips en `/`, redirección de `/auth` a `/`). El resto sigue vigente, ahora desde `/juegos`.
+
 ---
 
 ## Scope

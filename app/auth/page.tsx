@@ -14,12 +14,12 @@ export default function Page() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setUser({ name: (user || "PLAYER1").toUpperCase().slice(0, 10) });
-    router.push("/");
+    router.push("/juegos");
   };
 
   const playAsGuest = () => {
     setUser({ name: "INVITADO" });
-    router.push("/");
+    router.push("/juegos");
   };
 
   return (
