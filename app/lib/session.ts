@@ -2,7 +2,13 @@
 // Solo para uso desde Client Components (el navegador es la única fuente).
 
 export type SessionUser = { name: string };
-export type SavedScore = { game: string; score: number; name: string; at: number };
+export type SavedScore = {
+  game: string;
+  score: number;
+  name: string;
+  at: number;
+  wave?: number; // oleada alcanzada (juegos de oleadas, p. ej. arena-zombie)
+};
 
 const USER_KEY = "av_user";
 const SCORES_KEY = "av_scores";

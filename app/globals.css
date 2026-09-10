@@ -1346,3 +1346,313 @@ a { color: inherit; text-decoration: none; }
 .term-body .dim { color: var(--ink-dim); }
 .term-body .success { margin-top: 12px; color: var(--green); text-shadow: 0 0 6px rgba(0,255,136,0.45); font-weight: 700; white-space: pre-wrap; }
 .term-body .caret { animation: blink 1s steps(1) infinite; }
+
+/* ===== SPEC 06 — Arena Z (juego autónomo a pantalla completa) ===== */
+
+/* portada del catálogo: un robot solo frente a la horda que avanza */
+.cover-zombie {
+  background:
+    repeating-linear-gradient(0deg, rgba(159,239,34,0.08) 0 2px, transparent 2px 22px),
+    radial-gradient(ellipse 120% 80% at 30% 50%, #2b3a12 0%, #0c1206 55%, #05060a 100%);
+}
+.cover-zombie::after {
+  /* la horda: pared de zombis avanzando desde la derecha */
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 62% 22%, #6b7a44 0 8px, transparent 9px),
+    radial-gradient(circle at 78% 30%, #7a5540 0 9px, transparent 10px),
+    radial-gradient(circle at 92% 24%, #5c4450 0 8px, transparent 9px),
+    radial-gradient(circle at 70% 46%, #7a5540 0 10px, transparent 11px),
+    radial-gradient(circle at 86% 52%, #6b7a44 0 9px, transparent 10px),
+    radial-gradient(circle at 60% 70%, #5c4450 0 8px, transparent 9px),
+    radial-gradient(circle at 77% 76%, #6b7a44 0 10px, transparent 11px),
+    radial-gradient(circle at 93% 72%, #7a5540 0 8px, transparent 9px),
+    radial-gradient(circle at 66% 92%, #5c4450 0 7px, transparent 8px);
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+.cover-zombie::before {
+  /* el robot: rombo acid-green con destello de disparo hacia la horda */
+  content: "";
+  position: absolute; left: 26%; top: 50%;
+  width: 26px; height: 26px;
+  transform: translate(-50%,-50%);
+  background:
+    conic-gradient(from -22deg at 100% 50%, rgba(226,255,156,0.9) 0deg, rgba(159,239,34,0) 44deg),
+    linear-gradient(135deg, #e6ff9c, #6fbf12);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  box-shadow: 0 0 26px 6px rgba(159,239,34,0.55);
+}
+
+/* superficie del juego: toma toda la ventana, por encima de la nav */
+.az-root {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: #0e1113;
+  color: #e9e6dc;
+  overflow: hidden;
+  font-family: var(--mono);
+}
+.az-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.az-exit {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 6;
+  padding: 8px 12px;
+  background: rgba(14, 17, 19, 0.72);
+  border: 1px solid rgba(159, 239, 34, 0.28);
+  color: #9fef22;
+  font-family: var(--pixel);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+.az-exit:hover {
+  color: #e9e6dc;
+  border-color: #9fef22;
+}
+
+/* HUD */
+.az-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  font-weight: 500;
+}
+.az-hud-tl {
+  position: absolute;
+  top: 52px;
+  left: 16px;
+}
+.az-hud-tr {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  text-align: right;
+}
+.az-hud-bl {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: rgba(14, 17, 19, 0.82);
+  border: 1px solid rgba(159, 239, 34, 0.25);
+  padding: 8px 12px;
+  min-width: 160px;
+}
+.az-hp-label,
+.az-hud-cap {
+  font-size: 10px;
+  color: #7c8580;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-bottom: 4px;
+}
+.az-hp {
+  width: 210px;
+  height: 16px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(159, 239, 34, 0.25);
+  overflow: hidden;
+}
+.az-hp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5f9414, #9fef22);
+  transition: width 0.15s ease-out;
+}
+.az-score-val {
+  font-family: var(--pixel);
+  font-size: 22px;
+  color: #e9e6dc;
+  line-height: 1.1;
+}
+.az-wave-val {
+  font-size: 13px;
+  color: #ffb454;
+  font-weight: 600;
+  margin-top: 4px;
+  letter-spacing: 0.08em;
+}
+.az-weapon-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #9fef22;
+  font-family: var(--pixel);
+}
+.az-weapon-ammo {
+  font-size: 12px;
+  color: #7c8580;
+  margin-top: 4px;
+}
+
+/* banner de oleada */
+.az-banner {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  text-align: center;
+  pointer-events: none;
+  animation: azBanner 0.3s ease-out;
+}
+@keyframes azBanner {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+.az-banner-big {
+  font-family: var(--pixel);
+  font-size: clamp(28px, 6vw, 50px);
+  letter-spacing: 0.06em;
+  color: #e9e6dc;
+  text-shadow: 0 0 22px rgba(159, 239, 34, 0.5);
+}
+.az-banner-small {
+  font-size: 13px;
+  color: #ffb454;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+/* overlays de inicio / game over */
+.az-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at center, rgba(20, 24, 20, 0.92), rgba(6, 7, 8, 0.97));
+}
+.az-panel {
+  border: 1px solid rgba(159, 239, 34, 0.25);
+  background: rgba(14, 17, 19, 0.55);
+  padding: 32px 38px;
+  max-width: 460px;
+  text-align: center;
+}
+.az-title {
+  font-family: var(--pixel);
+  font-size: clamp(32px, 8vw, 48px);
+  margin: 0 0 6px;
+  letter-spacing: 0.04em;
+  color: #e9e6dc;
+  text-shadow: 0 0 30px rgba(159, 239, 34, 0.35);
+}
+.az-subtitle {
+  color: #9fef22;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  margin-bottom: 22px;
+}
+.az-howto {
+  color: #7c8580;
+  font-size: 13px;
+  line-height: 1.8;
+  text-align: left;
+  margin: 0 0 24px;
+}
+.az-howto b {
+  color: #e9e6dc;
+  font-weight: 600;
+}
+.az-play {
+  cursor: pointer;
+  font-family: var(--pixel);
+  background: #9fef22;
+  color: #101410;
+  border: none;
+  padding: 13px 34px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.az-play:active {
+  background: #5f9414;
+}
+.az-retry {
+  margin-top: 6px;
+}
+.az-go-label {
+  font-size: 11px;
+  color: #ff4d4d;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+.az-go-score {
+  font-family: var(--pixel);
+  font-size: 40px;
+  color: #e9e6dc;
+  margin: 8px 0 2px;
+}
+.az-go-best {
+  font-size: 12px;
+  color: #7c8580;
+  margin-bottom: 20px;
+  letter-spacing: 0.08em;
+}
+.az-save-row {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.az-save-row input {
+  flex: 1;
+  height: 42px;
+  padding: 0 12px;
+  background: #0e1113;
+  border: 1px solid rgba(159, 239, 34, 0.25);
+  outline: 0;
+  font-family: var(--mono);
+  color: #e9e6dc;
+}
+.az-save-row input:focus {
+  border-color: #9fef22;
+}
+.az-saved {
+  font-family: var(--pixel);
+  font-size: 10px;
+  color: #9fef22;
+  text-shadow: 0 0 8px #9fef22;
+  margin: 6px 0 14px;
+}
+
+@media (max-width: 520px) {
+  .az-hud-tl {
+    left: 16px;
+    top: 64px;
+  }
+  .az-hp {
+    width: 160px;
+  }
+  .az-panel {
+    padding: 26px 20px;
+  }
+  .az-save-row {
+    flex-direction: column;
+  }
+  .az-hud-bl {
+    min-width: 128px;
+    padding: 6px 10px;
+  }
+}

@@ -118,6 +118,17 @@ const GAMES: Game[] = [
     plays: "6.4K",
   },
   {
+    id: "arena-zombie",
+    title: "ARENA Z",
+    short: "Sobrevive oleadas de zombis con 5 armas y cobertura cambiante.",
+    long: "Pilotas un robot de combate en una arena cercada. Mueves y apuntas por separado, recoges armas cada vez más brutales tiradas por el suelo y aguantas oleadas que suben en número, velocidad y aguante. Cuatro clases de zombi, cinco disposiciones de obstáculos, un solo objetivo: no caer.",
+    cat: "SHOOTER",
+    cover: "cover-zombie",
+    color: "green",
+    best: 32750,
+    plays: "0",
+  },
+  {
     id: "duelo-pixel",
     title: "DUELO PIXEL",
     short: "Dos paletas. Una pelota. Reflejos máximos.",
