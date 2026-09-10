@@ -1,6 +1,6 @@
 # SPEC 06 — Integrar el juego Arena Z (shooter top-down de oleadas) en el catálogo
 
-> **Status:** aprobado
+> **Status:** Implementado
 > **Depends on:** SPEC 01, SPEC 05
 > **Date:** 2026-09-10
 > **Objective:** Portar el prototipo `references/started-games/010-zombie/arena-zombie-prototipo.html` a un componente cliente autónomo `<ArenaZombieGame />` (canvas a pantalla completa, mecánicas y balance sin retocar) y añadirlo como noveno juego del catálogo con guardado de la puntuación final en `localStorage`.
