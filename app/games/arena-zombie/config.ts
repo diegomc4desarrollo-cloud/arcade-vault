@@ -1,7 +1,10 @@
 // Datos de balance de Arena Z. Valores idénticos al prototipo
 // references/started-games/010-zombie/arena-zombie-prototipo.html — no se retocan.
 
-import type { GaitParams, Obstacle, Theme, Weapon, WaveConfig, ZombieType } from "./types";
+import type { GaitParams, Theme, Weapon, WaveConfig, ZombieType } from "./types";
+
+// Radio del jugador relativo al tamaño de casilla: r = PLAYER_RADIUS_FACTOR × min(tileW, tileH).
+export const PLAYER_RADIUS_FACTOR = 0.55;
 
 export const WEAPONS: Record<string, Weapon> = {
   pistol: {
@@ -56,8 +59,8 @@ export const WEAPONS: Record<string, Weapon> = {
     name: "Lanzallamas",
     kind: "stream",
     dps: 6.5,
-    range: 130,
-    arc: 0.42,
+    range: 180,
+    arc: 0.52,
     fuelPerSec: 24,
     ammo: 150,
     color: "#ff7a2e",
@@ -66,7 +69,7 @@ export const WEAPONS: Record<string, Weapon> = {
 
 export const Z_TYPES: Record<string, ZombieType> = {
   walker: {
-    r: 15,
+    radiusFactor: 0.5,
     speed: 58,
     hp: 2,
     color: "#4c5a3a",
@@ -76,7 +79,7 @@ export const Z_TYPES: Record<string, ZombieType> = {
     gait: "shuffle",
   },
   limper: {
-    r: 14,
+    radiusFactor: 0.48,
     speed: 32,
     hp: 3,
     color: "#4a4638",
@@ -86,7 +89,7 @@ export const Z_TYPES: Record<string, ZombieType> = {
     gait: "limp",
   },
   runner: {
-    r: 11,
+    radiusFactor: 0.4,
     speed: 118,
     hp: 1,
     color: "#6a4a3a",
@@ -96,7 +99,7 @@ export const Z_TYPES: Record<string, ZombieType> = {
     gait: "sprint",
   },
   brute: {
-    r: 23,
+    radiusFactor: 0.8,
     speed: 38,
     hp: 8,
     color: "#5a3a4a",
@@ -181,36 +184,6 @@ export const THEMES: Theme[] = [
     grid: "rgba(140,150,255,.06)",
     fog: "rgba(120,120,255,.08)",
   },
-];
-
-function rectAt(cx: number, cy: number, w: number, h: number): Obstacle {
-  return { x: cx - w / 2, y: cy - h / 2, w, h };
-}
-
-// Disposiciones de obstáculos: rotan por oleada para que se note el cambio.
-export const OBSTACLE_LAYOUTS: Array<(W: number, H: number) => Obstacle[]> = [
-  () => [], // oleada abierta, de calentamiento
-  (W, H) => [rectAt(W * 0.5, H * 0.5, 72, 72)], // un cubo central
-  (W, H) => [
-    // cruz de cuatro bloques + uno central más pequeño
-    rectAt(W * 0.5, H * 0.5, 46, 46),
-    rectAt(W * 0.28, H * 0.32, 52, 52),
-    rectAt(W * 0.72, H * 0.32, 52, 52),
-    rectAt(W * 0.28, H * 0.7, 52, 52),
-    rectAt(W * 0.72, H * 0.7, 52, 52),
-  ],
-  (W, H) => [
-    // pasillo: dos muros paralelos con hueco a los lados
-    rectAt(W * 0.5, H * 0.34, 240, 26),
-    rectAt(W * 0.5, H * 0.68, 240, 26),
-  ],
-  (W, H) => [
-    // cajas sueltas asimétricas, cobertura suelta
-    rectAt(W * 0.3, H * 0.38, 46, 46),
-    rectAt(W * 0.64, H * 0.55, 56, 56),
-    rectAt(W * 0.46, H * 0.74, 42, 42),
-    rectAt(W * 0.76, H * 0.28, 44, 44),
-  ],
 ];
 
 export function waveConfig(w: number): WaveConfig {
