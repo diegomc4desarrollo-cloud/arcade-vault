@@ -24,7 +24,8 @@ export interface Weapon {
 export type ZombieGait = "shuffle" | "limp" | "sprint" | "stomp";
 
 export interface ZombieType {
-  r: number;
+  // Factor de radio relativo al tamaño de casilla: r = radiusFactor × min(tileW, tileH).
+  radiusFactor: number;
   speed: number;
   hp: number;
   color: string;
@@ -88,6 +89,10 @@ export interface ArenaZombieCallbacks {
   onHud: (hud: HudSnapshot) => void;
   onBanner: (big: string, small: string) => void;
   onGameOver: (score: number, wave: number) => void;
+  onVictory: (score: number, wave: number) => void;
+  // Oleada superada (y no es la última): la partida se pausa hasta que
+  // React llame a `continueAfterWave()` con la decisión del jugador.
+  onWaveClear: (wave: number) => void;
 }
 
 // Handle con el que React controla la partida.
@@ -95,6 +100,9 @@ export interface ArenaZombieHandle {
   start: () => void; // (re)inicia una partida y arranca el bucle
   pause: () => void;
   resume: () => void;
+  // Responde al aviso de `onWaveClear`: si `healFull` es true, restaura la
+  // vida al máximo, y en cualquier caso reanuda la partida con la siguiente oleada.
+  continueAfterWave: (healFull: boolean) => void;
   initAudio: () => void; // llamar en el gesto del usuario (botón Empezar)
   destroy: () => void; // cancela rAF y quita todos los listeners
 }

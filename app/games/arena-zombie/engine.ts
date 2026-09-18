@@ -3,7 +3,17 @@
 // factoría con todo el estado en el closure (montable/desmontable en React).
 
 import { createAudio } from "./audio";
-import { GAIT_PARAMS, OBSTACLE_LAYOUTS, THEMES, WEAPONS, Z_TYPES, waveConfig } from "./config";
+import { GAIT_PARAMS, PLAYER_RADIUS_FACTOR, THEMES, WEAPONS, Z_TYPES, waveConfig } from "./config";
+import {
+  FLOOR_MAPS,
+  MAP_COLS,
+  MAP_ROWS,
+  floorIndexForWave,
+  isBuildingCleared,
+  parseFloor,
+  type ParsedFloor,
+} from "./maps";
+import { computeFlowField, flowDirection, type FlowField } from "./navigation";
 import type {
   ArenaZombieCallbacks,
   ArenaZombieHandle,
@@ -13,6 +23,10 @@ import type {
   WaveConfig,
   ZombieGait,
 } from "./types";
+
+// Recálculo del flow field: como mucho una vez cada 150 ms, o antes si el
+// jugador cambia de casilla (nunca por zombi individual).
+const FLOW_FIELD_INTERVAL = 0.15;
 
 interface Bullet {
   x: number;
@@ -141,6 +155,7 @@ export function create(
       start: () => {},
       pause: () => {},
       resume: () => {},
+      continueAfterWave: () => {},
       initAudio: () => {},
       destroy: () => {},
     };
@@ -257,7 +272,7 @@ export function create(
   canvas.addEventListener("touchcancel", onTouchEnd, { passive: false });
 
   // ---------- Game state ----------
-  type Phase = "idle" | "playing" | "gameover";
+  type Phase = "idle" | "playing" | "gameover" | "victory" | "wavebreak";
   let state: Phase = "idle";
   let paused = false;
 
@@ -267,6 +282,12 @@ export function create(
   let particles: Particle[] = [];
   let pickups: Pickup[] = [];
   let obstacles: Obstacle[] = [];
+
+  let currentFloor: ParsedFloor = parseFloor(FLOOR_MAPS[0], W, H);
+  let currentFloorIndex = -1;
+  let flowField: FlowField = new Int32Array(MAP_COLS * MAP_ROWS).fill(-1);
+  let lastPlayerTile = { c: -1, r: -1 };
+  let flowFieldTimer = 0;
 
   let score = 0;
   let wave = 0;
@@ -282,11 +303,15 @@ export function create(
   let running = false;
   let lastHud: HudSnapshot | null = null;
 
+  function tileMin(): number {
+    return Math.min(W / MAP_COLS, H / MAP_ROWS);
+  }
+
   function makePlayer(): Player {
     return {
       x: W / 2,
       y: H / 2,
-      r: 15,
+      r: tileMin() * PLAYER_RADIUS_FACTOR,
       speed: 230,
       angle: 0,
       hp: 100,
@@ -308,6 +333,9 @@ export function create(
     particles = [];
     pickups = [];
     obstacles = [];
+    currentFloorIndex = -1;
+    lastPlayerTile = { c: -1, r: -1 };
+    flowFieldTimer = 0;
     score = 0;
     wave = 0;
     pickupTimer = 8;
@@ -320,22 +348,27 @@ export function create(
     waveCfg = waveConfig(wave);
     spawnQueue = waveCfg.total;
     spawnTimer = 0;
-    obstacles = OBSTACLE_LAYOUTS[(wave - 1) % OBSTACLE_LAYOUTS.length](W, H);
-    const themeName = THEMES[Math.floor((wave - 1) / 4) % THEMES.length].name;
-    callbacks.onBanner(
-      `OLEADA ${wave}`,
-      wave % 4 === 1 ? `zona: ${themeName.toLowerCase()}` : "se acercan",
-    );
-    sfx.wave();
-  }
 
-  function edgeSpawnPos(): { x: number; y: number } {
-    const side = Math.floor(Math.random() * 4);
-    const pad = 40;
-    if (side === 0) return { x: Math.random() * W, y: -pad };
-    if (side === 1) return { x: W + pad, y: Math.random() * H };
-    if (side === 2) return { x: Math.random() * W, y: H + pad };
-    return { x: -pad, y: Math.random() * H };
+    const floorIdx = floorIndexForWave(wave);
+    currentFloor = parseFloor(FLOOR_MAPS[floorIdx], W, H);
+    obstacles = currentFloor.walls;
+    // Forzar recálculo del flow field para la planta/posición recién cargada.
+    lastPlayerTile = { c: -1, r: -1 };
+    flowFieldTimer = 0;
+
+    const floorChanged = floorIdx !== currentFloorIndex;
+    if (floorChanged) {
+      currentFloorIndex = floorIdx;
+      player.x = currentFloor.playerSpawn.x;
+      player.y = currentFloor.playerSpawn.y;
+      bullets = [];
+      pickups = [];
+      const floorMap = FLOOR_MAPS[floorIdx];
+      callbacks.onBanner(`PLANTA ${floorMap.id} — ${floorMap.name}`, "nueva planta");
+    } else {
+      callbacks.onBanner(`OLEADA ${wave}`, "se acercan");
+    }
+    sfx.wave();
   }
 
   function spawnZombie(): void {
@@ -349,13 +382,14 @@ export function create(
     else if (roll < cL) typeKey = "limper";
     const t = Z_TYPES[typeKey];
     const gp = GAIT_PARAMS[t.gait];
-    const pos = edgeSpawnPos();
+    const spawns = currentFloor.zombieSpawns;
+    const pos = spawns[Math.floor(Math.random() * spawns.length)];
     const cappedSpeed = Math.min(t.speed * waveCfg.speedMult, player.speed * 0.92);
     const limp = gp.limpRange[0] + Math.random() * (gp.limpRange[1] - gp.limpRange[0]);
     zombies.push({
       x: pos.x,
       y: pos.y,
-      r: t.r,
+      r: tileMin() * t.radiusFactor,
       type: typeKey,
       gait: t.gait,
       speed: cappedSpeed,
@@ -411,11 +445,16 @@ export function create(
   }
 
   function spawnPickup(): void {
+    const freeSpots = currentFloor.pickupSpots.filter(
+      (spot) => !pickups.some((p) => p.x === spot.x && p.y === spot.y),
+    );
+    if (freeSpots.length === 0) return;
+    const spot = freeSpots[Math.floor(Math.random() * freeSpots.length)];
     const keysList = ["smg", "shotgun", "cannon", "flamer"];
     const key = keysList[Math.floor(Math.random() * keysList.length)];
     pickups.push({
-      x: 80 + Math.random() * (W - 160),
-      y: 80 + Math.random() * (H - 160),
+      x: spot.x,
+      y: spot.y,
       r: 14,
       key,
       bob: Math.random() * Math.PI * 2,
@@ -467,19 +506,19 @@ export function create(
         }
       }
     }
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < 4; k++) {
       const spread = (Math.random() - 0.5) * arc * 1.7;
       const a = player.angle + spread;
       const dist2 = 12 + Math.random() * range * 0.85;
       particles.push({
         x: player.x + Math.cos(player.angle) * (player.r + 8) + Math.cos(a) * dist2 * 0.15,
         y: player.y + Math.sin(player.angle) * (player.r + 8) + Math.sin(a) * dist2 * 0.15,
-        vx: Math.cos(a) * (90 + Math.random() * 60),
-        vy: Math.sin(a) * (90 + Math.random() * 60),
-        life: 0.16 + Math.random() * 0.14,
-        maxLife: 0.3,
+        vx: Math.cos(a) * (130 + Math.random() * 90),
+        vy: Math.sin(a) * (130 + Math.random() * 90),
+        life: 0.22 + Math.random() * 0.18,
+        maxLife: 0.4,
         color: Math.random() < 0.5 ? "#ff7a2e" : "#ffd166",
-        size: 3 + Math.random() * 3.5,
+        size: 5 + Math.random() * 5,
       });
     }
     flameTickTimer -= dt;
@@ -543,6 +582,11 @@ export function create(
   function endGame(): void {
     state = "gameover";
     callbacks.onGameOver(Math.floor(score), wave);
+  }
+
+  function winGame(): void {
+    state = "victory";
+    callbacks.onVictory(Math.floor(score), wave);
   }
 
   function emitHud(): void {
@@ -636,7 +680,25 @@ export function create(
         spawnTimer = waveCfg.spawnInterval;
       }
     } else if (zombies.length === 0) {
-      startNextWave();
+      if (isBuildingCleared(wave)) {
+        winGame();
+        return;
+      }
+      // Pausa la partida y espera la decisión del jugador (curar o no)
+      // antes de arrancar la siguiente oleada; ver continueAfterWave().
+      state = "wavebreak";
+      callbacks.onWaveClear(wave);
+      return;
+    }
+
+    // flow field: al cambiar de casilla el jugador, o cada FLOW_FIELD_INTERVAL como mucho
+    const playerCol = Math.floor(player.x / currentFloor.tileW);
+    const playerRow = Math.floor(player.y / currentFloor.tileH);
+    flowFieldTimer -= dt;
+    if (playerCol !== lastPlayerTile.c || playerRow !== lastPlayerTile.r || flowFieldTimer <= 0) {
+      flowField = computeFlowField(currentFloor.solid, playerCol, playerRow);
+      lastPlayerTile = { c: playerCol, r: playerRow };
+      flowFieldTimer = FLOW_FIELD_INTERVAL;
     }
 
     // pickups
@@ -677,8 +739,18 @@ export function create(
       const dx = player.x - z.x;
       const dy = player.y - z.y;
       const d = Math.hypot(dx, dy) || 1;
-      z.x += (dx / d) * z.speed * dt + Math.sin(z.wob) * 6 * dt;
-      z.y += (dy / d) * z.speed * dt + Math.cos(z.wob * 0.7) * 6 * dt;
+      const direct = { x: dx / d, y: dy / d };
+      const dir =
+        flowDirection(
+          flowField,
+          currentFloor.solid,
+          z.x,
+          z.y,
+          currentFloor.tileW,
+          currentFloor.tileH,
+        ) ?? direct;
+      z.x += dir.x * z.speed * dt + Math.sin(z.wob) * 6 * dt;
+      z.y += dir.y * z.speed * dt + Math.cos(z.wob * 0.7) * 6 * dt;
       resolveObstacles(z);
       z.legAngle = Math.atan2(dy, dx);
       z.walkPhase += dt * (5 + z.speed * 0.03);
@@ -853,7 +925,7 @@ export function create(
 
   // ---------- Render ----------
   function render(): void {
-    const theme = THEMES[Math.floor((wave - 1) / 4) % THEMES.length] || THEMES[0];
+    const theme = THEMES[currentFloor.map.theme] || THEMES[0];
     g.save();
     if (shakeT > 0) {
       g.translate((Math.random() - 0.5) * shakeMag, (Math.random() - 0.5) * shakeMag);
@@ -887,7 +959,12 @@ export function create(
     g.lineWidth = 6;
     g.strokeRect(3, 3, W - 6, H - 6);
 
-    if (state !== "playing" && state !== "gameover") {
+    if (
+      state !== "playing" &&
+      state !== "gameover" &&
+      state !== "victory" &&
+      state !== "wavebreak"
+    ) {
       g.restore();
       return;
     }
@@ -1161,6 +1238,14 @@ export function create(
     },
     pause() {
       paused = true;
+    },
+    continueAfterWave(healFull) {
+      if (state !== "wavebreak") return;
+      if (healFull) player.hp = player.maxHp;
+      state = "playing";
+      paused = false;
+      lastTime = 0;
+      startNextWave();
     },
     resume() {
       paused = false;

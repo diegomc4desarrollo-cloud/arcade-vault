@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "validate:maps": "node scripts/validate-floor-maps.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

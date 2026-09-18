@@ -6,7 +6,7 @@ import { getUser, saveScore } from "@/app/lib/session";
 import { create } from "@/app/games/arena-zombie/engine";
 import type { ArenaZombieHandle, HudSnapshot } from "@/app/games/arena-zombie/types";
 
-type Phase = "start" | "playing" | "gameover";
+type Phase = "start" | "playing" | "gameover" | "victory";
 
 const EMPTY_HUD: HudSnapshot = {
   hp: 100,
@@ -30,6 +30,7 @@ export default function ArenaZombieGame() {
   const [best, setBest] = useState(0);
   const [name, setName] = useState("INVITADO");
   const [saved, setSaved] = useState(false);
+  const [waveClear, setWaveClear] = useState<number | null>(null);
 
   const showBanner = useCallback((big: string, small: string) => {
     setBanner({ big, small });
@@ -46,18 +47,35 @@ export default function ArenaZombieGame() {
     setPhase("gameover");
   }, []);
 
+  const handleVictory = useCallback((s: number, w: number) => {
+    setFinalScore(s);
+    setFinalWave(w);
+    setBest((b) => Math.max(b, s));
+    setName(getUser()?.name ?? "INVITADO");
+    setSaved(false);
+    setPhase("victory");
+  }, []);
+
+  const handleWaveClear = useCallback((w: number) => {
+    setWaveClear(w);
+  }, []);
+
   const cbRef = useRef({
     onHud: setHud,
     onBanner: showBanner,
     onGameOver: handleGameOver,
+    onVictory: handleVictory,
+    onWaveClear: handleWaveClear,
   });
   useEffect(() => {
     cbRef.current = {
       onHud: setHud,
       onBanner: showBanner,
       onGameOver: handleGameOver,
+      onVictory: handleVictory,
+      onWaveClear: handleWaveClear,
     };
-  }, [showBanner, handleGameOver]);
+  }, [showBanner, handleGameOver, handleVictory, handleWaveClear]);
 
   // Monta el motor una sola vez y lo limpia al desmontar.
   useEffect(() => {
@@ -67,6 +85,8 @@ export default function ArenaZombieGame() {
       onHud: (h) => cbRef.current.onHud(h),
       onBanner: (a, b) => cbRef.current.onBanner(a, b),
       onGameOver: (s, w) => cbRef.current.onGameOver(s, w),
+      onVictory: (s, w) => cbRef.current.onVictory(s, w),
+      onWaveClear: (w) => cbRef.current.onWaveClear(w),
     });
     handleRef.current = handle;
     return () => {
@@ -95,8 +115,14 @@ export default function ArenaZombieGame() {
     setHud(EMPTY_HUD);
     setBanner(null);
     setSaved(false);
+    setWaveClear(null);
     handle.start();
     setPhase("playing");
+  };
+
+  const resolveWaveClear = (healFull: boolean) => {
+    handleRef.current?.continueAfterWave(healFull);
+    setWaveClear(null);
   };
 
   const persistScore = () => {
@@ -146,6 +172,24 @@ export default function ArenaZombieGame() {
         </div>
       )}
 
+      {waveClear !== null && phase === "playing" && (
+        <div className="az-overlay">
+          <div className="az-panel">
+            <div className="az-victory-label">Oleada {waveClear} superada</div>
+            <div className="az-go-best">Vida actual: {Math.max(0, hud.hp)}%</div>
+            <p className="az-wavebreak-question">¿Recuperar la vida al máximo antes de seguir?</p>
+            <div className="az-wavebreak-actions">
+              <button type="button" className="az-play" onClick={() => resolveWaveClear(true)}>
+                Sí
+              </button>
+              <button type="button" className="az-decline" onClick={() => resolveWaveClear(false)}>
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {phase === "start" && (
         <div className="az-overlay">
           <div className="az-panel">
@@ -192,6 +236,35 @@ export default function ArenaZombieGame() {
             )}
             <button type="button" className="az-play az-retry" onClick={startRun}>
               Reintentar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "victory" && (
+        <div className="az-overlay">
+          <div className="az-panel">
+            <div className="az-victory-label">Edificio despejado</div>
+            <div className="az-go-score">{finalScore.toLocaleString("es-ES")}</div>
+            <div className="az-go-best">
+              Mejor: {best.toLocaleString("es-ES")} · Oleada {finalWave}
+            </div>
+            {!saved ? (
+              <div className="az-save-row">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value.toUpperCase().slice(0, 10))}
+                  placeholder="TUS INICIALES"
+                />
+                <button type="button" className="az-play" onClick={persistScore}>
+                  GUARDAR PUNTUACIÓN
+                </button>
+              </div>
+            ) : (
+              <div className="az-saved">▸ PUNTUACIÓN GUARDADA_</div>
+            )}
+            <button type="button" className="az-play az-retry" onClick={startRun}>
+              Jugar de nuevo
             </button>
           </div>
         </div>
