@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arena Zombie — jefes finales</title>
+<style>
+  :root{--ink:#0e1113;--bone:#e9e6dc;--acid:#9fef22;--muted:#7c8580;--danger:#ff4d4d;--amber:#ffb454;--line:rgba(159,239,34,.25)}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--bone);font-family:'Oswald','Arial Narrow',sans-serif}
+  header{padding:22px 24px 6px}
+  h1{margin:0;font-size:26px;letter-spacing:.06em}
+  header p{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.5;max-width:900px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(460px,1fr));gap:18px;padding:18px 24px 40px}
+  .card{border:1px solid var(--line);background:rgba(255,255,255,.02)}
+  .card h2{margin:0;padding:10px 12px;font-size:16px;font-weight:600;letter-spacing:.08em;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline}
+  .card h2 small{color:var(--amber);font-weight:400;font-size:12px;letter-spacing:.2em}
+  canvas{display:block;width:100%;height:auto}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;padding:10px 12px;font-size:13px;border-top:1px solid var(--line)}
+  .stats b{color:var(--acid);font-weight:600}
+  .stats .full{grid-column:1/-1;color:var(--muted);line-height:1.5}
+  .diff{display:inline-block;letter-spacing:2px;color:var(--danger)}
+</style>
+</head>
+<body>
+<header>
+  <h1>JEFES FINALES — PLANTAS 1 · 3 · 7 · 10</h1>
+  <p>Mismo estilo procedural que el prototipo (sin sprites): silueta, marcha y color distintos para que se reconozcan al instante. Cada jefe aparece al terminar la última oleada de su planta, con barra de vida arriba. La figura verde pequeña es el jugador, a escala.</p>
+</header>
+<div class="grid" id="grid"></div>
+
+<script>
+(function(){
+"use strict";
+const TILE = 26;
+
+// ---------- utilidades de dibujo (mismas que el prototipo) ----------
+function lighten(hex, amt){
+  amt = amt==null?38:amt;
+  const num = parseInt(hex.replace('#',''),16);
+  const r=Math.min(255,(num>>16)+amt), g=Math.min(255,((num>>8)&0xff)+amt), b=Math.min(255,(num&0xff)+amt);
+  return 'rgb('+r+','+g+','+b+')';
+}
+function legCurve(ctx,hx,hy,fx,fy,bend,width,color){
+  const mx=(hx+fx)/2,my=(hy+fy)/2,dx=fx-hx,dy=fy-hy,len=Math.hypot(dx,dy)||1;
+  const kx=mx+(-dy/len)*bend, ky=my+(dx/len)*bend;
+  ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(hx,hy);ctx.quadraticCurveTo(kx,ky,fx,fy);ctx.stroke();
+}
+function drawLegs(ctx,angle,phase,stepAmp,kneeBend,color,width,hipGap,asym){
+  ctx.save();ctx.rotate(angle);
+  const a=asym==null?1:asym, sA=Math.sin(phase), sB=Math.sin(phase+Math.PI);
+  const fAx=sA*stepAmp, fAy=-hipGap+Math.abs(sA)*1.4, fBx=sB*stepAmp*a, fBy=hipGap+Math.abs(sB)*1.4*a;
+  legCurve(ctx,0,-hipGap,fAx,fAy,Math.max(0,sA)*kneeBend,width,color);
+  legCurve(ctx,0,hipGap,fBx,fBy,Math.max(0,sB)*kneeBend*a,width,color);
+  ctx.fillStyle=color;
+  ctx.beginPath();ctx.arc(fAx,fAy,width*.62,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(fBx,fBy,width*.62,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+function torso(ctx,ox,oy,rx,ry,color){
+  const g=ctx.createRadialGradient(ox-rx*.3,oy-ry*.35,1,ox,oy,rx*1.35);
+  g.addColorStop(0,lighten(color));g.addColorStop(1,color);
+  ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(ox,oy,rx,ry,0,0,Math.PI*2);ctx.fill();
+}
+function head(ctx,x,y,r,tilt,color,eye){
+  ctx.save();ctx.translate(x,y);ctx.rotate(tilt);
+  ctx.fillStyle=color;ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=eye||'#ff3b3b';
+  ctx.beginPath();ctx.arc(r*.28,-r*.3,r*.22,0,Math.PI*2);ctx.arc(r*.28,r*.3,r*.22,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+function arms(ctx,s,phase,color,reach,width){
+  const a1=Math.sin(phase*.55)*9*s, a2=Math.sin(phase*.55+2.4)*9*s;
+  ctx.strokeStyle=color;ctx.lineWidth=(width||3)*s;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(-4*s,-6*s);ctx.lineTo(reach*s+a1,-3*s);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-4*s,6*s);ctx.lineTo((reach-1)*s+a2,4*s);ctx.stroke();
+  ctx.fillStyle=color;
+  ctx.beginPath();ctx.arc(reach*s+a1,-3*s,2.2*s,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc((reach-1)*s+a2,4*s,2.2*s,0,Math.PI*2);ctx.fill();
+  return {a1,a2};
+}
+function drawPlayer(ctx,x,y,t){
+  ctx.save();ctx.translate(x,y);
+  drawLegs(ctx,0,t*6,5,5,'#232f18',3.6,5,1);
+  ctx.strokeStyle='#232f18';ctx.lineWidth=3;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(-2,6);ctx.lineTo(8,8);ctx.stroke();
+  ctx.fillStyle='#232f18';ctx.fillRect(5,-2,12,4);
+  const g=ctx.createRadialGradient(-2,-3,1,0,0,12);g.addColorStop(0,lighten('#9fef22',30));g.addColorStop(1,'#7fd018');
+  ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(-8,-7);ctx.lineTo(7,-6);ctx.lineTo(10,0);ctx.lineTo(7,6);ctx.lineTo(-8,7);ctx.lineTo(-10,0);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#101410';ctx.beginPath();ctx.arc(5,0,4.5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#c8ffb0';ctx.fillRect(4,-3.2,5,1.8);
+  ctx.restore();
+}
+
+// ---------- JEFES ----------
+const BOSSES = [
+  {
+    planta:1, nombre:'El Capataz', dif:'★☆☆☆', tiles:1.15, color:'#5b5a32', dark:'#37361b', eye:'#ffcf3b',
+    hp:45, vel:'Lenta (0.6× jugador), embestida 2.2×', dmg:'Contacto 16 · embestida 28', puntos:250,
+    habilidad:'Embestida: se frena medio segundo, baja la cabeza y carga en línea recta hasta chocar con un muro (se aturde 1 s si choca). Cada 5 s.',
+    fase:'Sin fases. Es el tutorial de jefe: aprender a esquivar un telegrafiado.',
+    draw(ctx,s,t,extras){
+      const charging = (t%5)>3.6, windup=(t%5)>3.0&&(t%5)<=3.6;
+      const phase=t*(charging?14:5);
+      drawLegs(ctx,0,phase,(charging?9:6)*s,3*s,'#1d1a0c',4.2*s,6*s,1);
+      ctx.save();ctx.rotate(windup?-0.15:(charging?0.12:Math.sin(t*1.5)*0.08));
+      arms(ctx,s,phase,this.dark,10,3.4);
+      // gancho en la mano derecha
+      ctx.strokeStyle='#8a8a8a';ctx.lineWidth=2.4*s;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(10*s+Math.sin(phase*.55)*9*s,-3*s);ctx.lineTo(19*s,-6*s);ctx.stroke();
+      ctx.beginPath();ctx.arc(19*s,-9*s,3.5*s,Math.PI*.2,Math.PI*1.4);ctx.stroke();
+      torso(ctx,(charging?2:-1)*s,0,9.6*s,7.4*s,this.color);
+      // chaleco reflectante
+      ctx.fillStyle='#ff9a2e';ctx.fillRect(-6*s,-2*s,10*s,4*s);
+      ctx.fillStyle='#e6e1c8';ctx.fillRect(-6*s,-.6*s,10*s,1.2*s);
+      head(ctx,6.5*s,0,5.6*s,Math.sin(t*.8)*.25,this.dark,this.eye);
+      // casco
+      ctx.fillStyle='#e0b020';ctx.beginPath();ctx.arc(6.5*s,0,6.2*s,Math.PI*1.1,Math.PI*1.9);ctx.lineTo(6.5*s,0);ctx.closePath();ctx.fill();
+      ctx.restore();
+      if(windup){ctx.strokeStyle='rgba(255,207,59,.7)';ctx.lineWidth=2;ctx.setLineDash([6,6]);ctx.beginPath();ctx.moveTo(12*s,0);ctx.lineTo(170,0);ctx.stroke();ctx.setLineDash([]);}
+      if(charging){ctx.strokeStyle='rgba(255,207,59,.35)';ctx.lineWidth=3*s;for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(-12*s*i,-4*s);ctx.lineTo(-12*s*i-8*s,-4*s);ctx.moveTo(-12*s*i,4*s);ctx.lineTo(-12*s*i-8*s,4*s);ctx.stroke();}}
+    }
+  },
+  {
+    planta:3, nombre:'La Matriarca', dif:'★★☆☆', tiles:1.35, color:'#5c3a5a', dark:'#33203a', eye:'#ff6ad5',
+    hp:70, vel:'Muy lenta (0.45× jugador)', dmg:'Contacto 18', puntos:500,
+    habilidad:'Nidada: cada 6 s se detiene, el vientre se hincha y expulsa 3 corredores. Los sacos brillantes son su punto débil: recibe doble daño mientras está pariendo.',
+    fase:'Al 40 % de vida pare 5 en vez de 3 y el intervalo baja a 4 s.',
+    draw(ctx,s,t){
+      const cyc=t%6, laying=cyc>4.6;
+      const phase=t*4;
+      drawLegs(ctx,0,laying?0:phase,5*s,2.5*s,'#1a1020',4.6*s,7*s,0.8);
+      ctx.save();ctx.rotate(Math.sin(t*.9)*.1);
+      arms(ctx,s,phase,this.dark,11,3.2);
+      const swell = laying ? 1+Math.sin((cyc-4.6)/1.4*Math.PI)*.25 : 1+Math.sin(t*2)*.03;
+      torso(ctx,-2*s,0,10.5*s*swell,8.5*s*swell,this.color);
+      // sacos
+      const glow = laying ? 1 : .55+Math.sin(t*3)*.2;
+      for(const [sx,sy] of [[-6,-3],[-3,4],[-8,3],[1,-4]]){
+        ctx.fillStyle='rgba(255,106,213,'+glow+')';ctx.beginPath();ctx.arc(sx*s*swell,sy*s*swell,2.4*s,0,Math.PI*2);ctx.fill();
+      }
+      head(ctx,7.5*s,0,5.2*s,Math.sin(t*1.1)*.3,this.dark,this.eye);
+      ctx.restore();
+      // corredores recién paridos
+      if(laying){
+        const k=(cyc-4.6)/1.4;
+        for(let i=0;i<3;i++){
+          const ang=Math.PI+(i-1)*0.7, d=6*s+k*70;
+          const x=Math.cos(ang)*d, y=Math.sin(ang)*d;
+          ctx.save();ctx.translate(x,y);ctx.globalAlpha=Math.min(1,k*3);
+          drawLegs(ctx,ang,t*12,7,5,'#181209',2.4,4,1);
+          ctx.save();ctx.rotate(ang);torso(ctx,2,0,7,4,'#6a4a3a');head(ctx,5,0,3.6,0,'#40291d');ctx.restore();
+          ctx.restore();
+        }
+      }
+    }
+  },
+  {
+    planta:7, nombre:'El Rastreador', dif:'★★★☆', tiles:0.95, color:'#5a1f1f', dark:'#2a0d0d', eye:'#ff2a2a',
+    hp:110, vel:'Rápida (0.95× jugador); acelerón 3×', dmg:'Contacto 14 · acelerón 30 + empujón', puntos:900,
+    habilidad:'Acelerón: desaparece medio segundo en una nube oscura y reaparece cruzando la sala hacia el jugador dejando estela. Cada 4 s. No ataca desde ángulos ciegos: siempre hay un flash rojo en el punto de salida.',
+    fase:'Al 50 % de vida el acelerón pasa a cada 2.5 s y deja dos estelas que hacen daño al pisarlas.',
+    draw(ctx,s,t){
+      const cyc=t%4, vanish=cyc>3.0&&cyc<3.5, dash=cyc>=3.5;
+      const phase=t*(dash?18:9);
+      ctx.save();
+      if(vanish){ctx.globalAlpha=.25;}
+      // cuerpo alargado: piernas largas, brazos con garras
+      drawLegs(ctx,0,phase,10*s,8*s,'#120606',2.8*s,5*s,1);
+      ctx.save();ctx.rotate(dash?0.05:Math.sin(t*2)*.06);
+      const A=arms(ctx,s,phase,this.dark,15,2.4);
+      // garras
+      ctx.strokeStyle='#d8d0c0';ctx.lineWidth=1.4*s;
+      for(const [hx,hy] of [[15*s+A.a1,-3*s],[14*s+A.a2,4*s]]){
+        for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(hx,hy);ctx.lineTo(hx+5*s,hy+i*2.2*s);ctx.stroke();}
+      }
+      torso(ctx,3*s,0,9.5*s,4.6*s,this.color);
+      head(ctx,10*s,0,4.6*s,Math.sin(t*3)*.15,this.dark,this.eye);
+      ctx.restore();
+      ctx.restore();
+      if(vanish){ // nube oscura + flash del punto de salida
+        ctx.fillStyle='rgba(20,5,5,.6)';ctx.beginPath();ctx.arc(0,0,16*s,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='rgba(255,42,42,.8)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(120,0,10+Math.sin(t*30)*4,0,Math.PI*2);ctx.stroke();
+      }
+      if(dash){ // estelas
+        for(let i=1;i<=4;i++){ctx.save();ctx.globalAlpha=.35/i;ctx.translate(-i*14*s,0);torso(ctx,3*s,0,9.5*s,4.6*s,this.color);ctx.restore();}
+      }
+    }
+  },
+  {
+    planta:10, nombre:'Paciente Cero', dif:'★★★★', tiles:1.9, color:'#2f2a44', dark:'#161226', eye:'#9fef22',
+    hp:260, vel:'Lenta (0.5× jugador); en furia 0.9×', dmg:'Contacto 25 · pisotón 40 en área · escombro 22', puntos:2500,
+    habilidad:'Pisotón: levanta los dos brazos 0.8 s y golpea el suelo; onda expansiva circular que hay que saltar alejándose (radio 3 casillas). Escombro: cada 5 s lanza un trozo de azotea en parábola al punto donde estaba el jugador (sombra creciente marca el impacto). Cada 7 s alterna.',
+    fase:'Al 60 % pierde una placa de armadura (recibe daño normal, antes reducido al 70 %). Al 30 % entra en furia: se vuelve verde brillante, va más rápido y el pisotón es cada 4 s. Al morir, la horda restante de la planta muere con él.',
+    draw(ctx,s,t){
+      const cyc=t%7, raise=cyc>5.0&&cyc<5.8, slam=cyc>=5.8&&cyc<6.6, rage=Math.floor(t/14)%2===1;
+      const col = rage ? '#3b6b2e' : this.color, eye = rage ? '#d4ff5a' : this.eye;
+      const phase=t*3.2;
+      drawLegs(ctx,0,(raise||slam)?0:phase,8*s,1.8*s,'#0d0a16',6.4*s,8*s,1);
+      ctx.save();ctx.rotate(Math.sin(t*.6)*.05);
+      // brazos enormes
+      const lift = raise ? -10*s : (slam ? 4*s : 0);
+      ctx.strokeStyle=this.dark;ctx.lineWidth=5.2*s;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(-5*s,-9*s);ctx.lineTo(13*s+lift*.3,-11*s+lift);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(-5*s,9*s);ctx.lineTo(13*s+lift*.3,11*s-lift);ctx.stroke();
+      ctx.fillStyle=this.dark;
+      ctx.beginPath();ctx.arc(13*s+lift*.3,-11*s+lift,4.2*s,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(13*s+lift*.3,11*s-lift,4.2*s,0,Math.PI*2);ctx.fill();
+      torso(ctx,-1*s,0,12*s,10*s,col);
+      // placas de armadura
+      ctx.fillStyle='#6a6580';
+      for(const [px,py,w,h] of [[-9,-8,7,5],[-9,3,7,5],[0,-4,8,8]]){ctx.fillRect(px*s,py*s,w*s,h*s);ctx.strokeStyle='#1a1726';ctx.lineWidth=1;ctx.strokeRect(px*s,py*s,w*s,h*s);}
+      head(ctx,8*s,0,6*s,Math.sin(t*.7)*.12,this.dark,eye);
+      ctx.restore();
+      if(raise){ctx.strokeStyle='rgba(255,77,77,.6)';ctx.lineWidth=2;ctx.setLineDash([5,7]);ctx.beginPath();ctx.arc(0,0,3*TILE,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}
+      if(slam){const k=(cyc-5.8)/0.8;ctx.strokeStyle='rgba(255,180,84,'+(1-k)+')';ctx.lineWidth=6*(1-k)+2;ctx.beginPath();ctx.arc(0,0,3*TILE*k,0,Math.PI*2);ctx.stroke();}
+      // escombro cayendo (cada 5 s, en la mitad del ciclo)
+      const dc=(t%5)/5; if(dc<0.6){const k=dc/0.6; const tx=150,ty=40; ctx.fillStyle='rgba(0,0,0,'+(.15+k*.35)+')';ctx.beginPath();ctx.ellipse(tx,ty,6+k*14,3+k*7,0,0,Math.PI*2);ctx.fill();
+        const px=tx*k, py=ty*k-Math.sin(k*Math.PI)*110; ctx.fillStyle='#7a6a4a';ctx.save();ctx.translate(px,py);ctx.rotate(k*6);ctx.fillRect(-6,-5,12,10);ctx.restore();}
+    }
+  }
+];
+
+// ---------- montaje ----------
+const grid=document.getElementById('grid');
+const views=[];
+BOSSES.forEach(b=>{
+  const card=document.createElement('div');card.className='card';
+  card.innerHTML='<h2><span>PLANTA '+b.planta+' — '+b.nombre.toUpperCase()+'</span><small class="diff">'+b.dif+'</small></h2>';
+  const c=document.createElement('canvas');c.width=460;c.height=260;card.appendChild(c);
+  const st=document.createElement('div');st.className='stats';
+  st.innerHTML='<div><b>Vida</b> '+b.hp+' (jugador: pistola = 1)</div><div><b>Tamaño</b> '+b.tiles+' casillas de radio</div>'
+    +'<div><b>Velocidad</b> '+b.vel+'</div><div><b>Daño</b> '+b.dmg+'</div>'
+    +'<div class="full"><b>Habilidad</b> — '+b.habilidad+'</div>'
+    +'<div class="full"><b>Fases</b> — '+b.fase+'</div>'
+    +'<div><b>Puntos</b> '+b.puntos+'</div>';
+  card.appendChild(st);grid.appendChild(card);
+  views.push({b,c,ctx:c.getContext('2d')});
+});
+
+let t0=null;
+function loop(ts){
+  if(!t0)t0=ts; const t=(ts-t0)/1000;
+  views.forEach(v=>{
+    const {b,c,ctx}=v;
+    ctx.clearRect(0,0,c.width,c.height);
+    const g=ctx.createLinearGradient(0,0,0,c.height);g.addColorStop(0,'#1c2422');g.addColorStop(1,'#121613');
+    ctx.fillStyle=g;ctx.fillRect(0,0,c.width,c.height);
+    ctx.strokeStyle='rgba(180,200,170,.05)';ctx.lineWidth=1;
+    for(let x=0;x<c.width;x+=TILE){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke();}
+    for(let y=0;y<c.height;y+=TILE){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke();}
+    // sombra
+    const s=b.tiles*TILE/15;
+    ctx.save();ctx.translate(200,140);
+    ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(0,10*s,12*s,6*s,0,0,Math.PI*2);ctx.fill();
+    b.draw(ctx,s,t);
+    ctx.restore();
+    drawPlayer(ctx,60,210,t);
+    ctx.fillStyle='rgba(233,230,220,.5)';ctx.font='11px Oswald, sans-serif';ctx.fillText('jugador',42,238);
+    // barra de vida
+    ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(120,18,220,10);
+    ctx.fillStyle='#ff4d4d';ctx.fillRect(120,18,220*(0.55+Math.sin(t*.4)*.4),10);
+    ctx.fillStyle='rgba(233,230,220,.8)';ctx.font='12px Oswald, sans-serif';ctx.fillText(b.nombre.toUpperCase(),120,14);
+  });
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

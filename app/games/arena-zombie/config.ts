@@ -59,7 +59,13 @@ export const WEAPONS: Record<string, Weapon> = {
     name: "Lanzallamas",
     kind: "stream",
     dps: 6.5,
-    range: 180,
+    // Subido de 180 (valor del prototipo) a petición: ~5 casillas en pantalla 16:9.
+    // Deja poco margen sobre el pisotón de Paciente Cero (3 casillas = 120-180 px según la
+    // resolución): a 1080p el jugador quema desde apenas 20 px fuera de la onda, así que la
+    // pelea sigue castigando el error de distancia.
+    // El dibujo del chorro en applyFlameStream() se deriva de este número, así que
+    // cambiarlo aquí alarga también la llama visible.
+    range: 200,
     arc: 0.52,
     fuelPerSec: 24,
     ammo: 150,

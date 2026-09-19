@@ -3,17 +3,36 @@
 // factoría con todo el estado en el closure (montable/desmontable en React).
 
 import { createAudio } from "./audio";
+import { bossForFloor, isBossWave } from "./bosses";
+import { drawBoss, drawBossGround, drawBossHealthBar } from "./bosses-draw";
+import {
+  damageBoss,
+  isBossIntangible,
+  isBossWeak,
+  spawnBoss,
+  updateBoss,
+  type BossContext,
+  type BossState,
+} from "./bosses-logic";
 import { GAIT_PARAMS, PLAYER_RADIUS_FACTOR, THEMES, WEAPONS, Z_TYPES, waveConfig } from "./config";
 import {
   FLOOR_MAPS,
   MAP_COLS,
   MAP_ROWS,
+  WAVES_PER_FLOOR,
   floorIndexForWave,
   isBuildingCleared,
   parseFloor,
   type ParsedFloor,
 } from "./maps";
-import { computeFlowField, flowDirection, type FlowField } from "./navigation";
+import {
+  computeFlowField,
+  flowDirection,
+  makeDetour,
+  moveWithDetour,
+  type Detour,
+  type FlowField,
+} from "./navigation";
 import type {
   ArenaZombieCallbacks,
   ArenaZombieHandle,
@@ -58,6 +77,9 @@ interface Zombie {
   legAngle: number;
   walkPhase: number;
   limp: number;
+  // Un bruto mide 1.6 casillas de ancho y el flow field razona en casillas: sin memoria de
+  // rodeo se encaja en las puertas estrechas y la oleada no termina nunca. Ver navigation.ts.
+  detour: Detour;
 }
 
 interface Particle {
@@ -283,6 +305,13 @@ export function create(
   let pickups: Pickup[] = [];
   let obstacles: Obstacle[] = [];
 
+  // Jefe de la planta: mientras no sea null la partida no avanza de oleada ni de planta.
+  let boss: BossState | null = null;
+  // Ya se ha matado al jefe de esta planta (distingue "aún no ha salido" de "ya no está").
+  let bossCleared = false;
+  // Respiro tras matarlo, para que se vean las partículas antes de la siguiente pantalla.
+  let bossDeathDelay = 0;
+
   let currentFloor: ParsedFloor = parseFloor(FLOOR_MAPS[0], W, H);
   let currentFloorIndex = -1;
   let flowField: FlowField = new Int32Array(MAP_COLS * MAP_ROWS).fill(-1);
@@ -296,6 +325,8 @@ export function create(
   let waveCfg: WaveConfig = waveConfig(1);
   let pickupTimer = 0;
   let lastTime = 0;
+  // Reloj de animación en segundos: lo usan los ciclos de dibujo del jefe.
+  let animTime = 0;
   let shakeT = 0;
   let shakeMag = 0;
   let flameTickTimer = 0;
@@ -333,6 +364,9 @@ export function create(
     particles = [];
     pickups = [];
     obstacles = [];
+    boss = null;
+    bossCleared = false;
+    bossDeathDelay = 0;
     currentFloorIndex = -1;
     lastPlayerTile = { c: -1, r: -1 };
     flowFieldTimer = 0;
@@ -344,7 +378,10 @@ export function create(
   }
 
   function startNextWave(): void {
+    // Seguro: mientras el jefe de la planta siga vivo no se avanza.
+    if (boss) return;
     wave++;
+    bossCleared = false;
     waveCfg = waveConfig(wave);
     spawnQueue = waveCfg.total;
     spawnTimer = 0;
@@ -371,24 +408,15 @@ export function create(
     sfx.wave();
   }
 
-  function spawnZombie(): void {
-    let typeKey = "walker";
-    const roll = Math.random();
-    const cB = waveCfg.bruteChance;
-    const cR = cB + waveCfg.runnerChance;
-    const cL = cR + waveCfg.limperChance;
-    if (roll < cB) typeKey = "brute";
-    else if (roll < cR) typeKey = "runner";
-    else if (roll < cL) typeKey = "limper";
+  /** Crea un zombi de un tipo concreto en un punto concreto (lo usa la nidada de La Matriarca). */
+  function spawnZombieAt(typeKey: string, x: number, y: number): void {
     const t = Z_TYPES[typeKey];
     const gp = GAIT_PARAMS[t.gait];
-    const spawns = currentFloor.zombieSpawns;
-    const pos = spawns[Math.floor(Math.random() * spawns.length)];
     const cappedSpeed = Math.min(t.speed * waveCfg.speedMult, player.speed * 0.92);
     const limp = gp.limpRange[0] + Math.random() * (gp.limpRange[1] - gp.limpRange[0]);
     zombies.push({
-      x: pos.x,
-      y: pos.y,
+      x,
+      y,
       r: tileMin() * t.radiusFactor,
       type: typeKey,
       gait: t.gait,
@@ -404,7 +432,22 @@ export function create(
       legAngle: 0,
       walkPhase: Math.random() * Math.PI * 2,
       limp,
+      detour: makeDetour(),
     });
+  }
+
+  function spawnZombie(): void {
+    let typeKey = "walker";
+    const roll = Math.random();
+    const cB = waveCfg.bruteChance;
+    const cR = cB + waveCfg.runnerChance;
+    const cL = cR + waveCfg.limperChance;
+    if (roll < cB) typeKey = "brute";
+    else if (roll < cR) typeKey = "runner";
+    else if (roll < cL) typeKey = "limper";
+    const spawns = currentFloor.zombieSpawns;
+    const pos = spawns[Math.floor(Math.random() * spawns.length)];
+    spawnZombieAt(typeKey, pos.x, pos.y);
   }
 
   function spawnParticles(x: number, y: number, color: string, n: number): void {
@@ -444,6 +487,80 @@ export function create(
     }
   }
 
+  /**
+   * Daño al jugador desde una fuente situada en (fromX, fromY): respeta la invulnerabilidad
+   * y lo empuja en dirección contraria. Lo usan las habilidades del jefe.
+   */
+  function damagePlayer(dmg: number, fromX: number, fromY: number): void {
+    if (player.invuln > 0 || player.hp <= 0) return;
+    player.hp -= dmg;
+    player.invuln = 0.7;
+    shakeT = 0.18;
+    shakeMag = 8;
+    sfx.hurt();
+    const dx = player.x - fromX;
+    const dy = player.y - fromY;
+    const d = Math.hypot(dx, dy) || 1;
+    player.x += (dx / d) * 14;
+    player.y += (dy / d) * 14;
+  }
+
+  function onBossPhase(): void {
+    sfx.wave();
+    shakeT = 0.22;
+    shakeMag = 7;
+  }
+
+  /** Muerte del jefe: puntos, partículas y, si es Paciente Cero, se lleva la horda con él. */
+  function killBoss(dead: BossState): void {
+    score += dead.cfg.points;
+    spawnParticles(dead.x, dead.y, dead.cfg.dark, 40);
+    spawnParticles(dead.x, dead.y, dead.cfg.eye, 22);
+    shakeT = 0.5;
+    shakeMag = 14;
+    sfx.explosion();
+    if (dead.cfg.killsHordeOnDeath) {
+      for (const z of zombies) spawnParticles(z.x, z.y, z.dark, 10);
+      zombies = [];
+    }
+    boss = null;
+    bossCleared = true;
+    bossDeathDelay = 1.2;
+    callbacks.onBanner(`${dead.cfg.name.toUpperCase()} ABATIDO`, `+${dead.cfg.points} puntos`);
+  }
+
+  /** Único camino de daño al jefe: balas, explosiones y lanzallamas pasan por aquí. */
+  function hitBoss(dmg: number, x: number, y: number, noise = true): void {
+    if (!boss) return;
+    const weak = isBossWeak(boss);
+    if (noise) {
+      spawnParticles(x, y, weak ? "#ffffff" : boss.cfg.color, weak ? 8 : 4);
+      sfx.hit();
+    }
+    const target = boss;
+    if (damageBoss(target, dmg, onBossPhase)) killBoss(target);
+  }
+
+  function bossContext(): BossContext {
+    return {
+      player,
+      tile: tileMin(),
+      tileW: currentFloor.tileW,
+      tileH: currentFloor.tileH,
+      solid: currentFloor.solid,
+      flowField,
+      resolveObstacles,
+      damagePlayer,
+      spawnRunner: (x, y) => spawnZombieAt("runner", x, y),
+      spawnParticles,
+      shake: (mag, time) => {
+        shakeMag = mag;
+        shakeT = time;
+      },
+      sfx,
+    };
+  }
+
   function spawnPickup(): void {
     const freeSpots = currentFloor.pickupSpots.filter(
       (spot) => !pickups.some((p) => p.x === spot.x && p.y === spot.y),
@@ -466,6 +583,9 @@ export function create(
     shakeT = 0.22;
     shakeMag = 10;
     sfx.explosion();
+    if (boss && !isBossIntangible(boss) && Math.hypot(boss.x - x, boss.y - y) < r + boss.r) {
+      hitBoss(dmg, x, y, false);
+    }
     for (let i = zombies.length - 1; i >= 0; i--) {
       const z = zombies[i];
       const d = Math.hypot(z.x - x, z.y - y);
@@ -486,33 +606,49 @@ export function create(
     const range = w.range ?? 0;
     const arc = w.arc ?? 0;
     const dps = w.dps ?? 0;
+    /** ¿Está el objetivo dentro del cono de llama? */
+    const inCone = (tx: number, ty: number, tr: number): boolean => {
+      const dx = tx - player.x;
+      const dy = ty - player.y;
+      if (Math.hypot(dx, dy) >= range + tr) return false;
+      let a = Math.atan2(dy, dx) - player.angle;
+      a = Math.atan2(Math.sin(a), Math.cos(a));
+      return Math.abs(a) < arc;
+    };
+    if (boss && !isBossIntangible(boss) && inCone(boss.x, boss.y, boss.r)) {
+      // Sin ruido ni partículas: la llama ya las genera cada frame y `damageBoss` pone el flash.
+      hitBoss(dps * dt, boss.x, boss.y, false);
+    }
     for (let i = zombies.length - 1; i >= 0; i--) {
       const z = zombies[i];
-      const dx = z.x - player.x;
-      const dy = z.y - player.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < range + z.r) {
-        let a = Math.atan2(dy, dx) - player.angle;
-        a = Math.atan2(Math.sin(a), Math.cos(a));
-        if (Math.abs(a) < arc) {
-          z.hp -= dps * dt;
-          z.hitFlash = 0.1;
-          if (z.hp <= 0) {
-            score += z.points;
-            spawnParticles(z.x, z.y, z.dark, 14);
-            zombies.splice(i, 1);
-            sfx.death();
-          }
+      if (inCone(z.x, z.y, z.r)) {
+        z.hp -= dps * dt;
+        z.hitFlash = 0.1;
+        if (z.hp <= 0) {
+          score += z.points;
+          spawnParticles(z.x, z.y, z.dark, 14);
+          zombies.splice(i, 1);
+          sfx.death();
         }
       }
     }
-    for (let k = 0; k < 4; k++) {
+    // Dibujo del chorro. Las partículas nacen repartidas a lo largo del cono, no en la
+    // boquilla: con el rozamiento del prototipo (`vx *= 0.9` por frame) una partícula solo
+    // recorre ~34 px antes de apagarse, así que si nacieran todas juntas la llama se vería
+    // hasta 89 px mientras quema hasta `range`. El reparto se deriva de `range` para que la
+    // llama visible siga al alcance si se vuelve a tocar el balance.
+    const muzzle = player.r + 8;
+    const jet = Math.max(0, range - muzzle);
+    // El cono crece con el cuadrado del alcance, así que las partículas también: si no, un
+    // chorro largo se ve moteado en vez de sólido. Con tope, para no disparar el coste.
+    const density = Math.min(12, Math.round(4 * (range / 180) ** 2));
+    for (let k = 0; k < density; k++) {
       const spread = (Math.random() - 0.5) * arc * 1.7;
       const a = player.angle + spread;
-      const dist2 = 12 + Math.random() * range * 0.85;
+      const along = Math.random() * jet * 0.82; // el 0.18 restante lo cubre el vuelo
       particles.push({
-        x: player.x + Math.cos(player.angle) * (player.r + 8) + Math.cos(a) * dist2 * 0.15,
-        y: player.y + Math.sin(player.angle) * (player.r + 8) + Math.sin(a) * dist2 * 0.15,
+        x: player.x + Math.cos(player.angle) * muzzle + Math.cos(a) * along,
+        y: player.y + Math.sin(player.angle) * muzzle + Math.sin(a) * along,
         vx: Math.cos(a) * (130 + Math.random() * 90),
         vy: Math.sin(a) * (130 + Math.random() * 90),
         life: 0.22 + Math.random() * 0.18,
@@ -594,6 +730,8 @@ export function create(
       hp: Math.max(0, Math.round(player.hp)),
       score: Math.floor(score),
       wave,
+      floor: currentFloor.map.id,
+      floorName: currentFloor.map.name,
       weaponName: player.weapon.name,
       ammo: player.ammo === Infinity ? "∞" : Math.ceil(player.ammo),
     };
@@ -602,6 +740,7 @@ export function create(
       lastHud.hp !== snap.hp ||
       lastHud.score !== snap.score ||
       lastHud.wave !== snap.wave ||
+      lastHud.floor !== snap.floor ||
       lastHud.weaponName !== snap.weaponName ||
       lastHud.ammo !== snap.ammo
     ) {
@@ -679,17 +818,29 @@ export function create(
         spawnQueue--;
         spawnTimer = waveCfg.spawnInterval;
       }
-    } else if (zombies.length === 0) {
-      if (isBuildingCleared(wave)) {
+    } else if (zombies.length === 0 && !boss && bossDeathDelay <= 0) {
+      // Horda vacía en la última oleada de una planta con jefe: sale el jefe y nada avanza
+      // hasta que muera. `bossCleared` distingue "aún no ha salido" de "ya ha caído".
+      const cfg =
+        !bossCleared && isBossWave(wave, WAVES_PER_FLOOR)
+          ? bossForFloor(wave / WAVES_PER_FLOOR)
+          : undefined;
+      if (cfg) {
+        boss = spawnBoss(cfg, currentFloor, player, tileMin());
+        callbacks.onBanner(`JEFE — ${cfg.name}`, `planta ${FLOOR_MAPS[currentFloorIndex].id}`);
+        sfx.wave();
+      } else if (isBuildingCleared(wave)) {
         winGame();
         return;
+      } else {
+        // Pausa la partida y espera la decisión del jugador (curar o no)
+        // antes de arrancar la siguiente oleada; ver continueAfterWave().
+        state = "wavebreak";
+        callbacks.onWaveClear(wave);
+        return;
       }
-      // Pausa la partida y espera la decisión del jugador (curar o no)
-      // antes de arrancar la siguiente oleada; ver continueAfterWave().
-      state = "wavebreak";
-      callbacks.onWaveClear(wave);
-      return;
     }
+    if (bossDeathDelay > 0) bossDeathDelay -= dt;
 
     // flow field: al cambiar de casilla el jugador, o cada FLOW_FIELD_INTERVAL como mucho
     const playerCol = Math.floor(player.x / currentFloor.tileW);
@@ -749,9 +900,13 @@ export function create(
           currentFloor.tileW,
           currentFloor.tileH,
         ) ?? direct;
-      z.x += dir.x * z.speed * dt + Math.sin(z.wob) * 6 * dt;
-      z.y += dir.y * z.speed * dt + Math.cos(z.wob * 0.7) * 6 * dt;
-      resolveObstacles(z);
+      // Velocidad deseada = camino del flow field + el bamboleo de siempre. Se normaliza para
+      // que el rodeo trabaje sobre una dirección unitaria; con el camino libre el resultado es
+      // idéntico al de antes (z.x += vx * dt), y solo cuando choca entran los intentos extra.
+      const vx = dir.x * z.speed + Math.sin(z.wob) * 6;
+      const vy = dir.y * z.speed + Math.cos(z.wob * 0.7) * 6;
+      const vlen = Math.hypot(vx, vy) || 1;
+      moveWithDetour(z, z.r, z.detour, vx / vlen, vy / vlen, vlen * dt, dt, resolveObstacles);
       z.legAngle = Math.atan2(dy, dx);
       z.walkPhase += dt * (5 + z.speed * 0.03);
       if (z.hitFlash > 0) z.hitFlash -= dt;
@@ -793,6 +948,26 @@ export function create(
             }
           }
           break;
+        }
+      }
+    }
+
+    // jefe
+    if (boss) {
+      updateBoss(boss, dt, bossContext());
+      if (player.hp <= 0) {
+        endGame();
+        return;
+      }
+      // Balas: mientras es intangible (windup del acelerón) lo atraviesan.
+      if (!isBossIntangible(boss)) {
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          const b = bullets[j];
+          if (Math.hypot(b.x - boss.x, b.y - boss.y) >= boss.r + 4) continue;
+          bullets.splice(j, 1);
+          if (b.explosive) triggerExplosion(b.x, b.y, b.blastR ?? 0, b.dmg);
+          else hitBoss(b.dmg, b.x, b.y);
+          if (!boss) break;
         }
       }
     }
@@ -1025,6 +1200,9 @@ export function create(
     });
     g.globalAlpha = 1;
 
+    // capa de suelo del jefe (estela, onda, telegrafiados) — por debajo de todo el mundo
+    if (boss) drawBossGround(g, boss, animTime, tileMin());
+
     // zombies
     zombies.forEach((z) => {
       g.save();
@@ -1115,6 +1293,9 @@ export function create(
       }
       g.restore();
     });
+
+    // jefe, por encima de la horda
+    if (boss) drawBoss(g, boss, animTime, tileMin());
 
     // bullets
     bullets.forEach((b) => {
@@ -1210,6 +1391,9 @@ export function create(
     }
 
     g.restore();
+
+    // Barra del jefe: fuera del `save` del temblor, para que no baile con los golpes.
+    if (boss) drawBossHealthBar(g, boss, W);
   }
 
   // ---------- Loop ----------
@@ -1219,6 +1403,7 @@ export function create(
     let dt = (ts - lastTime) / 1000;
     dt = Math.min(dt, 0.05);
     lastTime = ts;
+    animTime += dt;
     update(dt);
     render();
     rafId = window.requestAnimationFrame(loop);

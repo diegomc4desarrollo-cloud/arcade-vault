@@ -81,6 +81,8 @@ export interface HudSnapshot {
   hp: number;
   score: number;
   wave: number;
+  floor: number; // planta del edificio, 1-10
+  floorName: string;
   weaponName: string;
   ammo: number | "∞";
 }

@@ -2982,11 +2982,17 @@ a {
   top: 52px;
   left: 16px;
 }
+/* Mismo tratamiento que el bloque de armas: sobre un muro claro el texto suelto desaparece,
+   y con la planta y la torre aquí el bloque ya no es un par de cifras, es el estado. */
 .az-hud-tr {
   position: absolute;
   top: 16px;
   right: 16px;
   text-align: right;
+  background: rgba(14, 17, 19, 0.82);
+  border: 1px solid rgba(159, 239, 34, 0.25);
+  padding: 8px 12px;
+  min-width: 132px;
 }
 .az-hud-bl {
   position: absolute;
@@ -3029,6 +3035,54 @@ a {
   font-weight: 600;
   margin-top: 4px;
   letter-spacing: 0.08em;
+}
+.az-floor-val {
+  font-size: 12px;
+  color: #e9e6dc;
+  font-weight: 600;
+  margin-top: 2px;
+  letter-spacing: 0.08em;
+}
+.az-floor-name {
+  color: #7c8580;
+  font-weight: 500;
+}
+
+/* La torre: 10 peldaños, el de arriba es la azotea. Dice dónde estás, cuánto queda
+   y qué plantas guardan un jefe (ámbar), sin gastar una sola palabra. */
+.az-tower {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+.az-rung {
+  width: 14px;
+  height: 3px;
+  background: rgba(233, 230, 220, 0.3);
+}
+/* Plantas ya despejadas: quedan marcadas, pero apagadas. */
+.az-rung-done {
+  background: rgba(159, 239, 34, 0.38);
+}
+/* Planta con jefe: se ve venir desde abajo. */
+.az-rung-boss {
+  width: 20px;
+  background: #ffb454;
+}
+.az-rung-done.az-rung-boss {
+  background: rgba(255, 180, 84, 0.4);
+}
+/* Dónde estás: el único peldaño a plena luz, y el único que sobresale. */
+.az-rung-here,
+.az-rung-here.az-rung-boss {
+  width: 26px;
+  height: 4px;
+  background: #9fef22;
+  box-shadow: 0 0 8px rgba(159, 239, 34, 0.55);
 }
 .az-weapon-name {
   font-size: 14px;
@@ -3154,6 +3208,27 @@ a {
   letter-spacing: 0.3em;
   text-transform: uppercase;
 }
+/* Pausa: ámbar, porque no es ni victoria (ácido) ni derrota (rojo), sino un estado retenido. */
+.az-pause-label {
+  font-size: 11px;
+  color: #ffb454;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+.az-pause-where {
+  font-family: var(--pixel);
+  font-size: 18px;
+  color: #e9e6dc;
+  margin: 14px 0 8px;
+  line-height: 1.4;
+}
+.az-pause-hint {
+  margin-top: 12px;
+  font-size: 10px;
+  color: #7c8580;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
 .az-wavebreak-question {
   font-size: 13px;
   color: #e9e6dc;
@@ -3239,5 +3314,35 @@ a {
   .az-hud-bl {
     min-width: 128px;
     padding: 6px 10px;
+  }
+  /* En pantalla pequeña la torre se compacta, no desaparece: es la respuesta a
+     "¿en qué planta estoy?" y se lee igual de rápido a la mitad de alto. */
+  .az-tower {
+    gap: 2px;
+    margin-top: 6px;
+  }
+  .az-rung {
+    width: 11px;
+    height: 2px;
+  }
+  .az-rung-here,
+  .az-rung-here.az-rung-boss {
+    width: 20px;
+    height: 3px;
+  }
+  .az-floor-val {
+    font-size: 11px;
+  }
+  /* El nombre de la planta es lo primero que sobra cuando la pantalla aprieta: el número
+     responde igual a "dónde estoy" y el nombre ya salió en el banner al entrar. */
+  .az-floor-name {
+    display: none;
+  }
+  .az-hud-tr {
+    min-width: 0;
+    padding: 6px 10px;
+  }
+  .az-pause-where {
+    font-size: 14px;
   }
 }
